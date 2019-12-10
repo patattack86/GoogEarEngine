@@ -1,0 +1,52 @@
+// Load an image.
+var image = ee.Image('LANDSAT/LC08/C01/T1_TOA/LC08_044034_20140318');
+
+//inspect projection adn scale
+var b1proj = image.select('B1').projection();
+var b1scale = image.select('B1').projection().nominalScale();
+//print('Band 1 projection: ', b1proj);
+
+//get timestamp
+var date = ee.Date(image.get('system:time_start'));
+//print('Timestamp: ', date); // ee.Date
+
+// Define the visualization parameters.
+var vizParams = {
+  bands: ['B5', 'B4', 'B3'],
+  min: 0,
+  max: 0.5,
+  gamma: [0.95, 1.1, 1]
+};
+
+// Center the map and display the image, use vizparams to define 
+Map.setCenter(-122.1899, 37.5010, 10); // San Francisco Bay
+Map.addLayer(image, vizParams, 'false color composite');
+
+
+// Create an NDWI image using blue and NIR, define visualization parameters and display.
+// NDWI uses new params in ndwiViz
+var ndwi = image.normalizedDifference(['B3', 'B5']);
+var ndwiViz = {min: 0.5, max: 1, palette: ['00FFFF', '0000FF']};
+Map.addLayer(ndwi, ndwiViz, 'NDWI', false);
+
+// Mask the the image, where NDWI < 0.4.
+//within the NDWI layer, all land features are masked and excluded
+var ndwiMasked = ndwi.updateMask(ndwi.gte(0.4));
+Map.addLayer(ndwiMasked, ndwiViz, 'NDWI masked');
+
+// Create visualization layers for later mosaic between RGB and NDWI.
+var imageRGB = image.visualize({bands: ['B5', 'B4', 'B3'], max: 0.5});
+var ndwiRGB = ndwiMasked.visualize({
+  min: 0.5,
+  max: 1,
+  palette: ['00FFFF', '0000FF']
+});
+
+//create bare earth/built up area using NDVI operator
+var ndvi = image.normalizedDifference(['B5', 'B4']);
+var bare = ndvi.lt(0.3).and(ndwi.lt(0));
+Map.addLayer(bare.updateMask(bare), {}, 'bare');
+
+// Mosaic the visualization layers and display (or export).
+var mosaic = ee.ImageCollection([imageRGB, ndwiRGB]).mosaic();
+Map.addLayer(mosaic, {}, 'mosaic');
